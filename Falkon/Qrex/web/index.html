@@ -255,6 +255,16 @@
                 <i id="mic-icon" class="fas fa-microphone icon"></i>
                 <span id="mic-text">Activate FALCON</span>
             </button>
+
+            <!-- Text input fallback -->
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+                <input id="text-input" type="text" placeholder="Type your message..." 
+                       style="flex:1; padding: 0.6rem 0.8rem; border-radius: 10px; border: 1px solid var(--border-subtle); background: rgba(255,255,255,0.06); color: var(--text-primary);">
+                <button id="send-button" 
+                        style="padding: 0.6rem 0.9rem; border-radius: 10px; border: none; background: var(--gradient-button); color: var(--bg-deep-space); font-weight: 600;">
+                    Send
+                </button>
+            </div>
         </div>
     </div>
 
@@ -265,13 +275,12 @@
         const micIcon = document.getElementById('mic-icon');
         const micText = document.getElementById('mic-text');
         const initialPromptDiv = document.querySelector('.initial-prompt');
+        const textInput = document.getElementById('text-input');
+        const sendButton = document.getElementById('send-button');
         let typingIndicatorElement = null;
 
         let isListening = false;
         let isProcessing = false;
-
-        // Use Python backend for speech recognition instead of browser API
-        let recognition = null;
 
         // Speech recognition using Python backend
         async function startSpeechRecognition() {
@@ -284,7 +293,7 @@
                 micText.textContent = 'Listening...';
                 if (initialPromptDiv) initialPromptDiv.style.display = 'none';
 
-                // Call Python backend for speech recognition
+                // Call Python backend for speech recognition (now with timeouts)
                 const userQuery = await eel.recognize_speech()();
                 
                 if (userQuery && userQuery.trim()) {
@@ -338,19 +347,60 @@
             }
         }
 
-            micButton.addEventListener('click', () => {
-                if (isProcessing) return;
+        micButton.addEventListener('click', () => {
+            if (isProcessing) return;
 
-                if (!isListening) {
-                    startSpeechRecognition();
+            if (!isListening) {
+                startSpeechRecognition();
+            } else {
+                // Stop listening - this will be handled by the Python backend
+                stopListeningUI();
+                updateMicButtonState('idle');
+            }
+        });
+
+        // Text input send handler
+        async function sendTextMessage() {
+            const text = (textInput.value || '').trim();
+            if (!text || isProcessing) return;
+            addMessageToUI(text, true);
+            textInput.value = '';
+            showTypingIndicator();
+            updateMicButtonState('processing');
+            isProcessing = true;
+
+            try {
+                const result = await eel.process_user_query(text)();
+                removeTypingIndicator();
+
+                if (result && result.response) {
+                    const aiResponseText = result.response;
+                    addMessageToUI(aiResponseText, false);
+
+                    if (result.should_speak === true) {
+                        const errorPhrases = ["error", "apologize", "couldn't formulate", "issue processing", "neural network connection interrupted"];
+                        const shouldSkipSpeak = errorPhrases.some(phrase => aiResponseText.toLowerCase().includes(phrase));
+                        if (!shouldSkipSpeak) {
+                            eel.request_tts(aiResponseText)();
+                        }
+                    }
                 } else {
-                    // Stop listening - this will be handled by the Python backend
-                    stopListeningUI();
-                    updateMicButtonState('idle');
+                    addMessageToUI("FALCON returned an unexpected response.", false);
                 }
-            });
+            } catch (error) {
+                console.error("Error calling Python via Eel:", error);
+                removeTypingIndicator();
+                addMessageToUI('Neural network connection interrupted. Please try again.', false);
+            } finally {
+                isProcessing = false;
+                updateMicButtonState('idle');
+            }
+        }
 
-        
+        sendButton.addEventListener('click', sendTextMessage);
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendTextMessage();
+        });
 
         function stopListeningUI() {
             isListening = false;
@@ -379,7 +429,6 @@
                     break;
             }
         }
-
 
         function addMessageToUI(text, isUser = true, isTyping = false) {
             if (initialPromptDiv && initialPromptDiv.style.display !== 'none') {

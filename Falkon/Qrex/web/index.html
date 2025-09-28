@@ -350,18 +350,7 @@
                 }
             });
 
-        // Always use Python backend for speech recognition
-        micButton.addEventListener('click', () => {
-            if (isProcessing) return;
-
-            if (!isListening) {
-                startSpeechRecognition();
-            } else {
-                // Stop listening - this will be handled by the Python backend
-                stopListeningUI();
-                updateMicButtonState('idle');
-            }
-        });
+        
 
         function stopListeningUI() {
             isListening = false;

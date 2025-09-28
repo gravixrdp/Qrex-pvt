@@ -10,3 +10,6 @@ pandas
 requests
 PyAudio
 edge-tts
+psutil
+pywhatkit
+openpyxl
